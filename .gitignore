@@ -1,0 +1,14 @@
+# 临时文件
+# 忽略所有 . 开头的目录，除了以下特殊制定的文件夹
+.*/
+!.vscode/
+!.github/
+!.husky/
+.vscode/extensions.json
+.vscode/launch.json
+.DS_Store
+
+
+# node 模块
+**/node_modules/
+**/yarn.lock

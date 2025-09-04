@@ -1,0 +1,7 @@
+dist
+node_modules
+.nuxt
+lib
+docs
+packages
+**/*.d.ts
