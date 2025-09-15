@@ -2,6 +2,7 @@
 import Project from './core/project';
 import Engine from './core/engine';
 import { startupAssetDB } from './core/assets';
+import { join, resolve } from 'path';
 
 class ProjectManager {
     create() {
@@ -33,4 +34,15 @@ class ProjectManager {
     }
 }
 
+
+
 export const projectManager = new ProjectManager();
+// 这是测试代码，不能使用单元测试，因为 jest 会捕获 require 然后不走 preload 的特殊处理,导致读不了 cc
+(async () => {
+    const { engine } = require('../.user.json');
+    const ccEngine = await Engine.init(engine);
+    await ccEngine.initEngine({
+        importBase: join(engine, 'library'),
+        nativeBase: join(engine, 'library'),
+    });
+})();

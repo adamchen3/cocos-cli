@@ -3,6 +3,7 @@ import { EngineCompiler } from './compiler';
 import { EngineInfo } from './@types/public';
 import { EngineConfig, InitEngineInfo } from './@types/config';
 import { IModuleConfig } from './@types/modules';
+import { join } from 'path';
 
 /**
  * 整合 engine 的一些编译、配置读取等功能
@@ -61,6 +62,10 @@ class Engine implements IEngine {
     }
     private _compiler: EngineCompiler | null = null;
 
+    private get compilerOutDir() {
+        return join(this._info.path, 'bin', '.cache', 'dev-cli');
+    }
+    
     /**
      * TODO init data in register project modules
      */
@@ -98,7 +103,7 @@ class Engine implements IEngine {
         if (!this._init) {
             throw new Error('Engine not init');
         }
-        this._compiler = this._compiler || EngineCompiler.create(this._info.path);
+        this._compiler = this._compiler || EngineCompiler.create(this._info.path, this.compilerOutDir);
         return this._compiler;
     }
 
@@ -112,19 +117,26 @@ class Engine implements IEngine {
             return this;
         }
         this._info.path = enginePath;
-        this._compiler = EngineCompiler.create(enginePath);
         this._init = true;
 
         return this;
+    }
+
+    async importEditorExtensions() {
+        // @ts-ignore
+        globalThis.EditorExtends = await import('./editor-extends');
     }
 
     /**
      * 加载以及初始化引擎环境
      */
     async initEngine(info: InitEngineInfo) {
-        // window.CC_PREVIEW = false;
+        await this.importEditorExtensions();
         const { default: preload } = await import('./modules/cc/preload');
         await preload({
+            engineRoot: this._info.path,
+            engineDev: this.compilerOutDir,
+
             requiredModules: [
                 'cc',
                 'cc/editor/populate-internal-constants',
@@ -136,12 +148,12 @@ class Engine implements IEngine {
                 'cc/editor/embedded-player',
                 'cc/editor/color-utils',
                 'cc/editor/custom-pipeline',
-            ],
+            ]
         });
 
         // @ts-ignore
         // window.cc.debug._resetDebugSetting(cc.DebugMode.INFO);
-        newConsole.trackTimeEnd('asset-db:require-engine-code', { output: true });
+        //newConsole.trackTimeEnd('asset-db:require-engine-code', { output: true });
 
         const modules = this.getConfig().includedModules || [];
         let physicsEngine = '';
