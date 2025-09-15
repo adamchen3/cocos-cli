@@ -63,19 +63,21 @@ async function preload(options: {
     
         // 设置 CC_EDITOR 标记，引擎加载的时候会使用标记进行部分判断
         // @ts-ignore
-        globalThis.CC_EDITOR = true;
+        globalThis.CC_EDITOR = false;
     
         // if (editorExtensions) {
         //     const ipc = await import('@base/electron-base-ipc');
-        //
+        
         //     // 向 engine 插件查询信息
         //     const info = ipc.sendSync('packages-engine:query-engine-info');
-        //
+        
         //     // 加载编辑器扩展
         //     // @ts-ignore
         //     globalThis.EditorExtends = require(ps.join(info.editor, './builtin/engine/dist/editor-extends'));
         // }
-    
+        // @ts-ignore
+        globalThis.window = {};
+        require(ps.join(info.enginePath, 'bin/.editor/web-adapter.js'));
         const engineModules: Record<string, unknown> = {};
     
         const loaderModule = require(ps.resolve(dist, 'loader')) as {
@@ -161,12 +163,12 @@ async function postProcess(editorPath?: string) {
         };
     }
 
-    const vStacks = require('v-stacks');
-    if ('__MAIN__' in window) {
-        const error = new Error('Try not to run the engine in the window process.');
-        error.stack = vStacks.ignoreStack(error.stack, 1);
-        console.warn(error);
-    }
+    // const vStacks = require('v-stacks');
+    // if ('__MAIN__' in window) {
+    //     const error = new Error('Try not to run the engine in the window process.');
+    //     error.stack = vStacks.ignoreStack(error.stack, 1);
+    //     console.warn(error);
+    // }
 
     const timeLabel = 'Import engine';
     console.time(timeLabel);
@@ -180,7 +182,7 @@ async function postProcess(editorPath?: string) {
             msg += '\n' + error.stack ? error.stack : error.toString();
         }
         // @ts-ignore
-        Editor.Message.send('engine', 'import-engine-error', msg);
+        //Editor.Message.send('engine', 'import-engine-error', msg);
         throw error;
     }
 
