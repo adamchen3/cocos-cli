@@ -201,8 +201,7 @@ class Engine implements IEngine {
             exactFitScreen: true,
         };
         cc.physics.selector.runInEditor = true;
-        // await cc.game.init(defaultConfig);
-
+        await cc.game.init(defaultConfig);
         return this;
     }
 
