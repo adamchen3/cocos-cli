@@ -3,21 +3,54 @@ import path from 'path';
 import fse from 'fs-extra';
 import { newConsole } from '../../base/console';
 import * as utils from './utils';
-import { IConfigurationManager, ConfigurationScope, IConfiguration } from '../@types/public';
+import { IConfiguration, ConfigurationScope, MessageType } from './interface';
 import { CocosMigrationManager } from '../migration';
 import { configurationRegistry } from './registry';
-import { defaultConfigMap } from '../configs';
+import { IBaseConfiguration } from './config';
+
+export interface IConfigurationManager {
+    /**
+     * 初始化配置管理器
+     */
+    initialize(projectPath: string): Promise<void>;
+
+    /**
+     * 获取配置
+     * @param key 配置键名，支持点号分隔的嵌套路径，如 'test.x.x'，第一位作为模块名
+     * @param scope 配置作用域，不指定时按优先级查找
+     */
+    get<T>(key: string, scope?: ConfigurationScope): Promise<T>;
+
+    /**
+     * 设置配置
+     * @param key 配置键名，支持点号分隔的嵌套路径，如 'test.x.x'，第一位作为模块名
+     * @param value 新的配置值
+     * @param scope 配置作用域，默认为 'project'
+     */
+    set<T>(key: string, value: T, scope?: ConfigurationScope): Promise<boolean>;
+
+    /**
+     * 移除配置
+     * @param key 配置键名，支持点号分隔的嵌套路径，如 'test.x.x'，第一位作为模块名
+     * @param scope 配置作用域，默认为 'project'
+     */
+    remove(key: string, scope?: ConfigurationScope): Promise<boolean>;
+}
 
 export class ConfigurationManager implements IConfigurationManager {
 
     static VERSION: string = '1.0.0';
-    static RootDir = '.cocos';
-    static name = 'settings.json';
+    static name = 'cocos.config.json';
+
+    private initialized: boolean = false;
+    private configPath: string = '';
     private projectConfig: IConfiguration = {
         version: '0.0.0',
     };
-    private initialized: boolean = false;
-    private configPath: string = '';
+
+    private configurationMap: Map<string, (...args: any[]) => void> = new Map();
+    private onRegistryConfigurationBind = this.onRegistryConfiguration.bind(this);
+    private onUnRegistryConfigurationBind = this.onUnRegistryConfiguration.bind(this);
 
     /**
      * 初始化配置管理器
@@ -27,10 +60,33 @@ export class ConfigurationManager implements IConfigurationManager {
             return;
         }
 
-        this.configPath = path.join(projectPath, ConfigurationManager.RootDir, ConfigurationManager.name);
+        configurationRegistry.on(MessageType.Registry, this.onRegistryConfigurationBind);
+        configurationRegistry.on(MessageType.UnRegistry, this.onUnRegistryConfigurationBind);
+
+        this.configPath = path.join(projectPath, ConfigurationManager.name);
         await this.load();
         await this.migrate(projectPath);
         this.initialized = true;
+    }
+
+    private onRegistryConfiguration(instance: IBaseConfiguration): void {
+        if (!this.configurationMap.has(instance.moduleName)) {
+            const bind = async (configInstance: IBaseConfiguration) => {
+                this.projectConfig[configInstance.moduleName] = configInstance.getAll();
+                await this.save();
+            }
+            instance.on(MessageType.Save, bind);
+            this.configurationMap.set(instance.moduleName, bind);
+        }
+    }
+
+    private onUnRegistryConfiguration(instances: IBaseConfiguration): void {
+        const bind = this.configurationMap.get(instances.moduleName);
+        if (bind) {
+            // TODO 是否需要删除
+            instances.off(MessageType.Save, bind);
+            this.configurationMap.delete(instances.moduleName);
+        }
     }
 
     /**
@@ -43,133 +99,96 @@ export class ConfigurationManager implements IConfigurationManager {
         const upgrade = gt(ConfigurationManager.VERSION, currentVersion);
         if (upgrade) {
             const configs = await CocosMigrationManager.migrate(projectPath);
-            this.projectConfig = Object.assign({}, this.projectConfig, configs);
+            this.projectConfig = utils.deepMerge(this.projectConfig, configs);
             this.projectConfig.version = ConfigurationManager.VERSION;
             await this.save();
         }
     }
 
     /**
-     * 获取配置值
-     * 读取规则：优先读项目配置，如果没有再读默认配置，默认配置也没定义的话，就打印警告日志
-     * @param key 配置键名，支持点号分隔的嵌套路径
-     * @param scope 配置作用域，不指定时按优先级查找
+     * 解析配置键，提取模块名和实际键名
+     * @param key 配置键名，如 'test.x.x'
+     * @private
      */
-    public async getValue<T>(key: string, scope?: ConfigurationScope): Promise<T | undefined> {
+    private parseKey(key: string): { moduleName: string; actualKey: string } {
         if (!utils.isValidConfigKey(key)) {
-            newConsole.warn('[Configuration] 获取配置失败：配置键名不能为空');
-            return undefined;
+            throw new Error('配置键名不能为空');
         }
-
-        await this.ensureInitialized();
-
-        // 获取项目配置值
-        const projectValue = utils.getByDotPath(this.projectConfig, key);
-        const hasProjectValue = projectValue !== undefined;
-
-        // 根据作用域决定返回策略
-        if (scope === 'project') {
-            return hasProjectValue ? (projectValue as T) : undefined;
+        
+        const parts = key.split('.');
+        if (parts.length < 2) {
+            throw new Error('配置键名格式错误，必须包含模块名，如 "module.key"');
         }
-
-        if (scope === 'default') {
-            const result = this.getDefaultConfigValue(key);
-            return result.found ? (result.value as T) : undefined;
+        
+        const moduleName = parts[0];
+        const actualKey = parts.slice(1).join('.');
+        
+        if (!actualKey || actualKey.trim() === '') {
+            throw new Error('配置键名不能为空');
         }
-
-        // 按优先级查找：先项目配置，后默认配置
-        if (hasProjectValue) {
-            return projectValue as T;
-        }
-
-        const result = this.getDefaultConfigValue(key);
-        if (!result.found) {
-            newConsole.warn(`[Configuration] 配置项 "${key}" 未找到，请检查配置是否正确注册`);
-            return undefined;
-        }
-
-        return result.value as T;
+        
+        return { moduleName, actualKey };
     }
 
     /**
-     * 从默认配置中获取值
-     * @param key 配置键名
-     * @returns 包含值和是否找到的标志
+     * 获取模块配置实例
+     * @param moduleName 模块名
+     * @private
      */
-    private getDefaultConfigValue(key: string): { value: any; found: boolean } {
-        const topLevelKey = key.split('.')[0];
-        const defaultConfig = configurationRegistry.get(topLevelKey) || defaultConfigMap[topLevelKey];
-
-        if (!defaultConfig) {
-            return { value: undefined, found: false };
+    private getInstance(moduleName: string): IBaseConfiguration {
+        const instance = configurationRegistry.getInstance(moduleName);
+        if (!instance) {
+            throw new Error(`[Configuration] 设置配置错误，${moduleName} 未注册`);
         }
+        return instance;
+    }
 
-        // 如果键名就是顶级键名，直接返回配置对象
-        if (key === topLevelKey) {
-            return { value: defaultConfig, found: true };
+    /**
+     * 获取配置值
+     * 读取规则：优先读项目配置，如果没有再读默认配置，默认配置也没定义的话，就打印警告日志
+     * @param key 配置键名，支持点号分隔的嵌套路径，如 'test.x.x'，第一位作为模块名
+     * @param scope 配置作用域，不指定时按优先级查找
+     */
+    public async get<T>(key: string, scope?: ConfigurationScope): Promise<T> {
+        try {
+            await this.ensureInitialized();
+            const { moduleName, actualKey } = this.parseKey(key);
+            return await this.getInstance(moduleName).get(actualKey, scope) as T;
+        } catch (error) {
+            throw new Error(`[Configuration] 获取配置失败：${error}`);
         }
-
-        // 否则使用点号路径查找嵌套值
-        // 需要从 key 中移除顶级键名，只保留嵌套路径
-        const nestedPath = key.substring(topLevelKey.length + 1);
-        const value = utils.getByDotPath(defaultConfig, nestedPath);
-        return { value, found: value !== undefined };
     }
 
     /**
      * 更新配置值
-     * @param key 配置键名，支持点号分隔的嵌套路径
+     * @param key 配置键名，支持点号分隔的嵌套路径，如 'test.x.x'，第一位作为模块名
      * @param value 新的配置值
      * @param scope 配置作用域，默认为 'project'
      */
-    public async updateValue<T>(key: string, value: T, scope: ConfigurationScope = 'project'): Promise<boolean> {
-        if (!utils.isValidConfigKey(key)) {
-            newConsole.warn('[Configuration] 更新配置失败：配置键名不能为空');
-            return false;
-        }
-
-        await this.ensureInitialized();
-
+    public async set<T>(key: string, value: T, scope: ConfigurationScope = 'project'): Promise<boolean> {
         try {
-            if (scope === 'project') {
-                utils.setByDotPath(this.projectConfig, key, value);
-                await this.save();
-                newConsole.debug(`[Configuration] 已更新项目配置: ${key} = ${JSON.stringify(value)}`);
-            } else if (scope === 'default') {
-                return this.updateDefaultConfigValue(key, value);
-            } else {
-                newConsole.warn(`[Configuration] 不支持的配置作用域: ${scope}`);
-                return false;
-            }
-
+            await this.ensureInitialized();
+            const { moduleName, actualKey } = this.parseKey(key);
+            await this.getInstance(moduleName).set(actualKey, value, scope);
             return true;
         } catch (error) {
-            newConsole.error(`[Configuration] 更新配置失败: ${key} - ${error}`);
-            return false;
+            throw new Error(`[Configuration] 更新配置失败：${error}`);
         }
     }
 
-
     /**
-     * 更新默认配置值
-     * @param key 配置键名
-     * @param value 新的配置值
-     * @returns 是否更新成功
+     * 移除配置值
+     * @param key 配置键名，支持点号分隔的嵌套路径，如 'test.x.x'，第一位作为模块名
+     * @param scope 配置作用域，默认为 'project'
      */
-    private updateDefaultConfigValue<T>(key: string, value: T): boolean {
-        const configKey = key.split('.')[0]; // 获取顶级配置键
-        const existingConfig = configurationRegistry.get(configKey);
-
-        if (!existingConfig) {
-            newConsole.warn(`[Configuration] 默认配置 "${configKey}" 未找到，无法更新`);
-            return false;
+    public async remove(key: string, scope: ConfigurationScope = 'project'): Promise<boolean> {
+        try {
+            await this.ensureInitialized();
+            const { moduleName, actualKey } = this.parseKey(key);
+            return await this.getInstance(moduleName).remove(actualKey, scope);
+        } catch (error) {
+            throw new Error(`[Configuration] 移除配置失败：${error}`);
         }
-
-        const updatedConfig = { ...existingConfig };
-        utils.setByDotPath(updatedConfig, key, value);
-        configurationRegistry.register(configKey, updatedConfig, { overwrite: true });
-        newConsole.debug(`[Configuration] 已更新默认配置: ${key} = ${JSON.stringify(value)}`);
-        return true;
     }
 
     /**

@@ -1,133 +1,126 @@
 import { newConsole } from '../../base/console';
 import * as utils from './utils';
-
-/**
- * 配置注册选项
- */
-export interface RegistryOptions {
-    /**
-     * 是否覆盖已存在的配置
-     */
-    overwrite?: boolean;
-}
-
+import { IBaseConfiguration, BaseConfiguration } from './config';
+import { EventEmitter } from 'events';
+import { MessageType } from './interface';
 
 /**
  * 配置注册器接口
  */
 export interface IConfigurationRegistry {
     /**
-     * 注册配置
-     * @param key 配置键名
-     * @param value 配置值
-     * @param options 注册选项
-     * @returns 注册成功返回配置对象，失败返回 null
+     * 获取所有配置实例
      */
-    register(key: string, value: Record<string, any>, options?: RegistryOptions): Record<string, any> | null;
-    
+    getInstances(): Record<string, IBaseConfiguration>;
+
     /**
-     * 获取已注册的配置
-     * @param key 配置键名
-     * @returns 配置值，如果不存在返回 undefined
+     * 通过模块名获取配置实例
+     * @param moduleName
      */
-    get(key: string): Record<string, any> | undefined;
-    
+    getInstance(moduleName: string): IBaseConfiguration | undefined;
+
     /**
-     * 获取所有已注册的配置
-     * @returns 配置对象
+     * 注册配置（使用默认配置对象）
+     * @param moduleName 模块名
+     * @param defaultConfig 默认配置对象
+     * @returns 注册成功返回配置实例，失败返回 null
      */
-    getAll(): Record<string, Record<string, any>>;
-    
+    register(moduleName: string, defaultConfig?: Record<string, any>): Promise<IBaseConfiguration>;
+
     /**
-     * 移除配置
-     * @param key 配置键名
-     * @returns 是否移除成功
+     * 注册配置（使用自定义配置实例）
+     * @param moduleName 模块名
+     * @param instance 自定义配置实例
+     * @returns 注册成功返回配置实例，失败返回 null
      */
-    remove(key: string): boolean;
-    
+    register<T extends IBaseConfiguration>(moduleName: string, instance: T): Promise<T>;
+
     /**
-     * 清空所有配置
+     * 反注册配置
+     * @param moduleName
      */
-    clear(): void;
+    unregister(moduleName: string): Promise<void>;
 }
 
 /**
  * 配置注册器实现类
  */
-export class ConfigurationRegistry implements IConfigurationRegistry {
-    private configs: Record<string, Record<string, any>> = {};
+export class ConfigurationRegistry extends EventEmitter implements IConfigurationRegistry {
+    private instances: Record<string, IBaseConfiguration> = {};
+
+    /**
+     * 获取所有配置实例
+     */
+    public getInstances() {
+        return this.instances;
+    }
+
+    /**
+     * 通过模块名获取配置实例
+     * @param moduleName
+     */
+    public getInstance(moduleName: string): IBaseConfiguration | undefined {
+        const instance = this.instances[moduleName];
+        if (!instance) {
+            console.warn(`[Configuration] 获取配置实例错误，${moduleName} 未注册配置。`);
+            return undefined;
+        }
+        return instance;
+    }
+
+    /**
+     * 注册配置（使用默认配置对象）
+     * @param moduleName 模块名
+     * @param defaultConfig 默认配置对象
+     * @returns 注册成功返回配置实例，失败报错
+     */
+    public async register(moduleName: string, defaultConfig?: Record<string, any>): Promise<IBaseConfiguration>;
     
     /**
-     * 注册配置
+     * 注册配置（使用自定义配置实例）
+     * @param moduleName 模块名
+     * @param instance 自定义配置实例
+     * @returns 注册成功返回配置实例，失败报错
      */
-    public register(key: string, value: Record<string, any>, options: RegistryOptions = {}): Record<string, any> | null {
-        if (!utils.isValidConfigKey(key)) {
-            newConsole.warn('[ConfigurationRegistry] 注册配置失败：配置键名不能为空');
-            return null;
-        }
-        
-        if (!utils.isValidConfigValue(value)) {
-            newConsole.warn('[ConfigurationRegistry] 注册配置失败：配置值必须是对象类型');
-            return null;
+    public async register<T extends IBaseConfiguration>(moduleName: string, instance: T): Promise<T>;
+    
+    public async register<T extends IBaseConfiguration>(moduleName: string, configOrInstance?: Record<string, any> | T): Promise<IBaseConfiguration | T> {
+        if (!utils.isValidConfigKey(moduleName)) {
+            throw new Error('[Configuration] 注册配置失败：模块名不能为空。');
         }
         
         // 检查配置是否已存在
-        const exists = key in this.configs;
-        if (exists && !options.overwrite) {
-            newConsole.warn(`[ConfigurationRegistry] 配置项 "${key}" 已存在，跳过注册。如需覆盖，请设置 overwrite: true`);
-            return this.configs[key];
+        const existingInstance = this.instances[moduleName];
+        const exists = existingInstance !== undefined;
+        
+        if (exists) {
+            newConsole.warn(`[Configuration] 配置项 "${moduleName}" 已存在，跳过注册。`);
+            return existingInstance;
         }
         
-        try {
-            this.configs[key] = value;
-            
-            if (exists && options.overwrite) {
-                newConsole.debug(`[ConfigurationRegistry] 已覆盖配置: ${key}`);
-            } else {
-                newConsole.debug(`[ConfigurationRegistry] 已注册配置: ${key}`);
+        let instance: IBaseConfiguration | T;
+        
+        // 判断第二个参数是配置对象还是配置实例
+        if (configOrInstance && 'moduleName' in configOrInstance && typeof configOrInstance.get === 'function') {
+            // 是配置实例
+            instance = configOrInstance as T;
+            // 验证实例的模块名是否匹配
+            if (instance.moduleName !== moduleName) {
+                throw new Error(`[Configuration] 注册配置失败：配置实例的模块名 "${instance.moduleName}" 与注册的模块名 "${moduleName}" 不匹配。`);
             }
-            
-            return value;
-        } catch (error) {
-            newConsole.error(`[ConfigurationRegistry] 注册配置失败: ${key} - ${error}`);
-            return null;
-        }
-    }
-    
-    /**
-     * 获取已注册的配置
-     */
-    public get(key: string): Record<string, any> | undefined {
-        return this.configs[key];
-    }
-    
-    /**
-     * 获取所有已注册的配置
-     */
-    public getAll(): Record<string, Record<string, any>> {
-        return { ...this.configs };
-    }
-    
-    /**
-     * 移除配置
-     */
-    public remove(key: string): boolean {
-        if (!(key in this.configs)) {
-            return false;
+        } else {
+            // 是配置对象或 undefined
+            instance = new BaseConfiguration(moduleName, configOrInstance as Record<string, any>);
         }
         
-        delete this.configs[key];
-        newConsole.debug(`[ConfigurationRegistry] 已移除配置: ${key}`);
-        return true;
+        this.instances[moduleName] = instance;
+        this.emit(MessageType.Registry, instance);
+        return instance;
     }
-    
-    /**
-     * 清空所有配置
-     */
-    public clear(): void {
-        const count = Object.keys(this.configs).length;
-        this.configs = {};
-        newConsole.debug(`[ConfigurationRegistry] 已清空所有配置，共移除 ${count} 个配置项`);
+
+    public async unregister(moduleName: string): Promise<void> {
+        this.emit(MessageType.UnRegistry, this.instances[moduleName]);
+        delete this.instances[moduleName];
     }
 }
 

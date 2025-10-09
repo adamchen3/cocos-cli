@@ -1,154 +1,160 @@
-# 配置注册器 (Configuration Registry)
+# 配置管理模块
 
-## 概述
+配置管理模块提供完整的配置管理解决方案，支持默认配置注册、项目级配置管理、配置迁移和版本控制。
 
-配置注册器是一个独立的模块，用于管理默认配置的注册、存储和检索。它从 `ConfigurationManager` 中抽取出来，提供了更灵活和强大的配置管理功能。
+## 特性
 
-## 设计理念
+- **模块化配置**：支持按模块注册和管理配置
+- **多作用域支持**：支持 `default`、`project`、`local`、`global` 四种配置作用域
+- **点号路径操作**：支持嵌套配置的便捷访问，如 `'database.connection.pool.max'`
+- **事件驱动**：基于 EventEmitter 的事件系统，支持配置变更监听
+- **自动迁移**：内置配置迁移系统，支持版本升级时的配置自动迁移
+- **类型安全**：完整的 TypeScript 类型定义
+- **持久化存储**：自动保存配置到 `cocos.config.json` 文件
 
-**解耦设计**：
-- `ConfigurationRegistry` 可以独立使用来注册配置
-- `ConfigurationManager` 专注于项目配置的管理（读取、更新、初始化）
-- 用户可以直接使用 `configurationRegistry` 进行配置注册，无需通过管理器
-- 这样的设计更加解耦和灵活，允许不同的模块独立注册配置
+## 使用建议
 
-## 核心 API
+**推荐使用方式**：通过 `configurationRegistry.register()` 获取配置对象，然后直接调用配置对象的 `get`、`set` 等方法进行操作。这种方式更加直观和高效。
 
-### ConfigurationRegistry
+**兼容方式**：也可以通过 `configurationManager` 使用点号路径（如 `'module.key'`）进行操作，但这种方式需要额外的解析步骤。
+
+## 核心组件
+
+- **ConfigurationRegistry**: 配置注册器，管理默认配置和配置实例
+- **ConfigurationManager**: 配置管理器，负责项目配置的读写和持久化
+- **BaseConfiguration**: 配置基类，提供配置操作功能和事件支持
+- **CocosMigrationManager**: 配置迁移管理器，处理版本升级时的配置迁移
+
+## 快速开始
 
 ```typescript
-import { configurationRegistry } from './script/registry';
+import { configurationRegistry, configurationManager } from './index';
 
-// 注册配置
-configurationRegistry.register('myModule', {
-    enabled: true,
+// 1. 初始化配置管理器
+await configurationManager.initialize('/path/to/project');
+
+// 2. 注册配置模块（推荐方式）
+const dbConfig = await configurationRegistry.register('database', {
+    host: 'localhost',
+    port: 5432,
     timeout: 5000
 });
 
-// 获取配置
-const config = configurationRegistry.get('myModule');
+// 3. 直接通过配置对象进行操作（推荐）
+await dbConfig.set('host', 'localhost', 'project');
+await dbConfig.set('port', 5432, 'project');
 
-// 检查配置是否存在
-const exists = configurationRegistry.get('myModule') !== undefined;
+// 4. 获取配置值
+const host = await dbConfig.get('host');
+const port = await dbConfig.get('port');
+```
 
-// 获取所有配置
-const allConfigs = configurationRegistry.getAll();
+## 主要功能
 
-// 移除配置
-configurationRegistry.remove('myModule');
+### 点号路径操作
+```typescript
+// 推荐方式：通过配置对象操作
+const dbConfig = await configurationRegistry.register('database');
+await dbConfig.set('connection.pool.max', 10, 'project');
+const maxPool = await dbConfig.get('connection.pool.max');
 
-// 清空所有配置
-configurationRegistry.clear();
+// 或者通过配置管理器操作（兼容方式）
+await configurationManager.set('database.connection.pool.max', 10, 'project');
+const maxPool = await configurationManager.get('database.connection.pool.max');
+```
+
+### 配置作用域
+```typescript
+// 推荐方式：通过配置对象操作
+const dbConfig = await configurationRegistry.register('database');
+
+// 设置默认配置
+await dbConfig.set('timeout', 5000, 'default');
+
+// 设置项目配置
+await dbConfig.set('timeout', 10000, 'project');
+
+// 获取配置（项目配置优先）
+const timeout = await dbConfig.get('timeout'); // 10000
+
+// 或者通过配置管理器操作（兼容方式）
+await configurationManager.set('database.timeout', 5000, 'default');
+await configurationManager.set('database.timeout', 10000, 'project');
+const timeout = await configurationManager.get('database.timeout'); // 10000
+```
+
+### 事件监听
+```typescript
+// 推荐方式：通过 register 获取配置对象
+const config = await configurationRegistry.register('myModule', { value: 1 });
+
+// 监听配置变更事件
+config.on('configuration:change', (key, newValue, oldValue) => {
+    console.log(`配置变更: ${key} = ${newValue}`);
+});
+
+// 监听保存事件
+config.on('configuration:save', () => {
+    console.log('配置已保存');
+});
+```
+
+## API 参考
+
+### ConfigurationRegistry
+```typescript
+// 注册配置模块（推荐方式）
+const config = await configurationRegistry.register('myModule', {
+    defaultKey: 'defaultValue'
+});
+
+// 获取已注册的配置实例
+const instance = configurationRegistry.getInstance('myModule');
+
+// 注销配置模块
+await configurationRegistry.unregister('myModule');
 ```
 
 ### ConfigurationManager
-
 ```typescript
-import { configurationManager } from './script/manager';
-
-// 初始化配置管理器
+// 初始化
 await configurationManager.initialize('/path/to/project');
 
-// 获取配置（支持点号路径）
-const value = await configurationManager.getValue('myModule.timeout');
+// 获取配置值（兼容方式）
+const value = await configurationManager.get('myModule.key');
 
-// 更新配置
-await configurationManager.updateValue('myModule.timeout', 6000, 'project');
+// 设置配置值（兼容方式）
+await configurationManager.set('myModule.key', 'value', 'project');
+
+// 删除配置值（兼容方式）
+await configurationManager.remove('myModule.key', 'project');
 ```
 
-## 使用示例
-
-### 1. 独立使用注册器
+### BaseConfiguration
+`BaseConfiguration` 是配置对象的基类，通过 `configurationRegistry.register()` 返回的实例就是 `BaseConfiguration` 的子类。
 
 ```typescript
-// 直接注册配置（无需初始化配置管理器）
-configurationRegistry.register('database', {
-    host: 'localhost',
-    port: 5432
-});
+// 通过 register 获取 BaseConfiguration 实例
+const config = await configurationRegistry.register('myModule', { timeout: 5000 });
 
-// 获取配置
-const dbConfig = configurationRegistry.get('database');
+// 获取配置值
+const timeout = await config.get('timeout');
+
+// 设置配置值
+await config.set('timeout', 6000, 'project');
+
+// 获取所有配置
+const allConfigs = config.getAll('project');
+
+// 删除配置值
+await config.remove('timeout', 'project');
+
+// 手动保存配置
+await config.save();
 ```
 
-### 2. 配置管理器自动查询注册器
-
-```typescript
-// 1. 先独立注册配置
-configurationRegistry.register('database', {
-    host: 'localhost',
-    port: 5432
-});
-
-// 2. 初始化配置管理器
-await configurationManager.initialize('/path/to/project');
-
-// 3. 配置管理器会自动从注册器获取默认配置
-const dbHost = await configurationManager.getValue('database.host');
-console.log(dbHost); // localhost
-```
-
-### 3. 配置优先级
-
-```typescript
-// 设置项目配置
-await configurationManager.updateValue('database.host', 'project-db-host', 'project');
-
-// 获取配置（项目配置优先）
-const host = await configurationManager.getValue('database.host'); // project-db-host
-
-// 只获取默认配置
-const defaultHost = await configurationManager.getValue('database.host', 'default'); // localhost
-```
-
-## 类型定义
-
-```typescript
-// 注册选项
-interface RegistryOptions {
-    overwrite?: boolean;      // 是否覆盖已存在的配置
-}
-
-// 配置作用域
-type ConfigurationScope = 'default' | 'project';
-```
-
-## 配置验证
-
-注册器会自动验证：
-1. **键名验证**: 键名不能为空字符串
-2. **值验证**: 配置值必须是对象类型
-
-```typescript
-// 这些调用会失败
-configurationRegistry.register('', { value: 1 });           // 空键名
-configurationRegistry.register('test', null);               // null 值
-configurationRegistry.register('test', []);                 // 数组值
-
-// 这个调用会成功
-configurationRegistry.register('test', { value: 1 });       // 对象值
-```
-
-## 配置覆盖
-
-默认情况下，注册器不允许覆盖已存在的配置：
-
-```typescript
-// 第一次注册
-configurationRegistry.register('myModule', { enabled: true });
-
-// 第二次注册（不会覆盖）
-const result = configurationRegistry.register('myModule', { enabled: false });
-// result 返回原始配置 { enabled: true }
-
-// 强制覆盖
-const result2 = configurationRegistry.register('myModule', { enabled: false }, { overwrite: true });
-// result2 返回新配置 { enabled: false }
-```
-
-## 测试
-
-```bash
-npm test -- registry.test.ts
-npm test -- configuration.test.ts
-```
+### 配置作用域说明
+- `default`: 默认配置，作为基础模板
+- `project`: 项目级配置，优先级最高
+- `local`: 本地配置，仅当前环境有效（暂无）
+- `global`: 全局配置，跨项目共享（暂无）
