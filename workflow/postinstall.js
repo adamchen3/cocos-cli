@@ -1,15 +1,15 @@
 // 拷贝模拟 cc 模块
-
 const fse = require('fs-extra');
 const path = require('path');
 const readline = require('readline');
-const utils = require('./utils');
 
 const userConfig = path.join(__dirname, '../.user.json');
 if (!fse.existsSync(userConfig)) {
     // TODO 需要完善：如果没有 user.json 不是开发版本
     return;
 }
+
+const utils = require('./utils');
 
 /**
  * 询问用户是否强制更新全部模块
@@ -62,6 +62,9 @@ async function mockNpmModules() {
     await utils.runCommand('node', ['./workflow/build-cc-module.js', forceFlag].filter(Boolean));
     // tsc cli
     await utils.runCommand('node', ['./workflow/build-ts.js', forceFlag].filter(Boolean));
+    //download tools
+    await utils.runCommand('node', ['./workflow/download-tools.js', forceFlag].filter(Boolean));
+
     // 模拟 i18n 包
     
     console.log('所有模块构建完成！');
