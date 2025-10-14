@@ -13,7 +13,7 @@ import { IInternalBuildSceneItem } from '../@types/options';
 import { BuildCheckResult, BundleCompressionType, IInternalBuildOptions, IInternalBundleBuildOptions, IPhysicsConfig } from '../@types/protected';
 import i18n from '../../base/i18n';
 import Utils from '../../base/utils';
-import { assetManager } from '../../assets/manager/asset';
+import assetManager from '../../assets/manager/asset';
 import { Engine } from '../../engine';
 import builderConfig, { BuildGlobalInfo, getBuildCommonOptions } from './builder-config';
 interface ModuleConfig {
