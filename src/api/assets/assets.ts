@@ -37,7 +37,11 @@ import {
     TCreatedAssetResult,
     TImportedAssetResult,
     TReimportResult,
-    TSaveAssetResult
+    TSaveAssetResult,
+    TRefreshDirResult,
+    SchemaBaseName,
+    TBaseName,
+    SchemaRefreshDirResult
 } from './schema';
 import { description, param, result, title, tool } from '../decorator/decorator.js';
 import { COMMON_STATUS, CommonResultType, HttpStatusCode } from '../base/schema-base';
@@ -90,12 +94,12 @@ export class AssetsApi extends ApiBase {
     @tool('assets-refresh')
     @title('刷新资源目录')
     @description('刷新 Cocos Creator 项目中的指定资源目录，重新扫描目录下的所有资源文件，更新资源数据库索引。当外部修改了资源文件或添加了新文件时，需要调用此方法同步资源状态。')
-    @result(SchemaDbDirResult)
-    async refresh(@param(SchemaDirOrDbPath) dir: TDirOrDbPath): Promise<CommonResultType<TDbDirResult>> {
+    @result(SchemaRefreshDirResult)
+    async refresh(@param(SchemaDirOrDbPath) dir: TDirOrDbPath): Promise<CommonResultType<TRefreshDirResult>> {
         const code: HttpStatusCode = COMMON_STATUS.SUCCESS;
-        const ret: CommonResultType<TDbDirResult> = {
+        const ret: CommonResultType<TRefreshDirResult> = {
             code: code,
-            data: { dbPath: dir },
+            data: null,
         };
 
         try {
@@ -246,7 +250,8 @@ export class AssetsApi extends ApiBase {
     @result(SchemaCreatedAssetResult)
     async createAssetByType(
         @param(SchemaSupportCreateType) ccType: TSupportCreateType,
-        @param(SchemaTargetPath) target: TTargetPath,
+        @param(SchemaDirOrDbPath) dirOrUrl: TDirOrDbPath,
+        @param(SchemaBaseName) baseName: TBaseName,
         @param(SchemaAssetOperationOption) options?: TAssetOperationOption
     ): Promise<CommonResultType<TCreatedAssetResult>> {
         const code: HttpStatusCode = COMMON_STATUS.SUCCESS;
@@ -256,7 +261,7 @@ export class AssetsApi extends ApiBase {
         };
 
         try {
-            ret.data = await assetManager.createAssetByType(ccType, target, options);
+            ret.data = await assetManager.createAssetByType(ccType, dirOrUrl, baseName, options);
         } catch (e) {
             ret.code = COMMON_STATUS.FAIL;
             console.error('create asset by type fail:', e instanceof Error ? e.message : String(e));
@@ -274,8 +279,8 @@ export class AssetsApi extends ApiBase {
     @description('将外部资源文件导入到项目中。从源路径复制文件到目标路径，并自动执行资源导入流程，生成 .meta 文件和库文件。适用于从外部引入图片、音频、模型等资源。')
     @result(SchemaImportedAssetResult)
     async importAsset(
-        @param(SchemaSourcePath) source: TSourcePath,
-        @param(SchemaTargetPath) target: TTargetPath,
+        @param(SchemaSourcePath) source: TDirOrDbPath,
+        @param(SchemaTargetPath) target: TDirOrDbPath,
         @param(SchemaAssetOperationOption) options?: TAssetOperationOption
     ): Promise<CommonResultType<TImportedAssetResult>> {
         const code: HttpStatusCode = COMMON_STATUS.SUCCESS;
@@ -338,7 +343,7 @@ export class AssetsApi extends ApiBase {
         };
 
         try {
-            ret.data = await assetManager.saveAsset(pathOrUrlOrUUID, data as string | Buffer);
+            ret.data = await assetManager.saveAsset(pathOrUrlOrUUID, data);
         } catch (e) {
             ret.code = COMMON_STATUS.FAIL;
             console.error('save asset fail:', e instanceof Error ? e.message : String(e));

@@ -5,7 +5,7 @@
 import { queryUUID, refresh, reimport, queryUrl, Utils, Asset } from '@editor/asset-db';
 import { Meta } from '@editor/asset-db/libs/meta';
 import { copy, move, remove, rename, existsSync } from 'fs-extra';
-import { isAbsolute, dirname, basename, join, relative } from 'path';
+import { isAbsolute, dirname, basename, join, relative, extname } from 'path';
 import { newConsole } from '../../base/console';
 import { IMoveOptions } from '../@types/private';
 import { IAsset, CreateAssetOptions, IExportOptions, IExportData, CreateAssetByTypeOptions, ICreateMenuInfo } from '../@types/protected';
@@ -69,7 +69,7 @@ class AssetOperation extends EventEmitter {
         return assetQueryManager.encodeAsset(asset);
     }
 
-    async copyAsset(urlOrPath: string, target: string, options?: IMoveOptions) { 
+    async copyAsset(urlOrPath: string, target: string, options?: IMoveOptions) {
     }
 
     checkValidUrl(urlOrPath: string) {
@@ -111,14 +111,19 @@ class AssetOperation extends EventEmitter {
     /**
      * 根据类型创建资源
      * @param type 
-     * @param target 目标地址，需要包含文件后缀
+     * @param dirOrUrl 目标目录
+     * @param baseName 基础名称
      * @param options 
      * @returns 
      */
-    async createAssetByType(type: ISupportCreateType, target: string, options?: CreateAssetByTypeOptions) {
+    async createAssetByType(type: ISupportCreateType, dirOrUrl: string, baseName: string, options?: CreateAssetByTypeOptions) {
         const createMenus = await assetHandlerManager.getCreateMenuByName(type);
         if (!createMenus.length) {
             throw new Error(`Can not support create type: ${type}`);
+        }
+        let dir = dirOrUrl;
+        if (dirOrUrl.startsWith('db://')) {
+            dir = url2path(dirOrUrl);
         }
         let createInfo: undefined | ICreateMenuInfo = createMenus[0];
         if (createMenus.length > 1 && options?.templateName) {
@@ -127,6 +132,8 @@ class AssetOperation extends EventEmitter {
                 throw new Error(`Can not find template: ${options.templateName}`);
             }
         }
+        const extName = extname(createInfo.fullFileName);
+        const target = join(dir, baseName + extName);
 
         return await this.createAsset({
             handler: createInfo.handler,
@@ -143,6 +150,12 @@ class AssetOperation extends EventEmitter {
      * @param options 
      */
     async importAsset(source: string, target: string, options?: AssetOperationOption): Promise<IAssetInfo[]> {
+        if (source.startsWith('db://')) {
+            source = url2path(source);
+        }
+        if (target.startsWith('db://')) {
+            target = url2path(target);
+        }
         await copy(source, target, options);
         await this.refreshAsset(target);
         const assetInfo = assetQuery.queryAssetInfo(target);
