@@ -100,7 +100,7 @@ export interface IQueryNodeParams {
 // 节点查询结果项接口
 export interface INode extends INodeIdentifier {
     properties: INodeProperties; // 节点属性
-    component?: IComponent[]; // 节点上的组件列表
+    components?: IComponent[]; // 节点上的组件列表
     children?: INode[]; // 子节点列表
 }
 
@@ -129,13 +129,13 @@ export interface IDeleteNodeResult {
 
 // 节点创建参数接口
 export interface ICreateNodeParams {
-    assetPath?: string; // 预制体资源路径
-    path: string; // 创建的节点相对路径
-    name?: string; // 节点的名称
-    workMode?: '2d' | '3d'; // 节点工作模式，2D 还是 3D
-    nodeType: string; // 节点类型
+    dbURLOrType: string; // 预制体资源路径 或 节点类型（NodeType）
+    path: string; // 节点路径
+    workMode?: '2d' | '3d';
+    name?: string;
     position?: IVec3;
-    keepWorldTransform?: boolean; // 保持世界变换
+    keepWorldTransform?: boolean;
+    canvasRequired?: boolean;
 }
 
 /**
