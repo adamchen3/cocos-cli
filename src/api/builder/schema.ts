@@ -58,7 +58,7 @@ export const SchemaBuildConfig = z.object({
 // 运行时/一次性选项（不进入配置结果）
 export const SchemaBuildRuntimeOptions = z.object({
     configPath: z.string().optional().describe('构建配置 JSON 文件地址'),
-    skipCheck: z.boolean().default(true).optional().describe('跳过构建参数的检查和自动补全流程'),
+    skipCheck: z.boolean().default(true).optional().describe('跳过构建参数的检查和自动补全流程，请在确认其他构建参数都是完整的情况才能设置为 true ，否则可能因为缺少配置导致构建失败'),
     taskId: z.string().optional().describe('指定构建任务 ID'),
     taskName: z.string().optional().describe('指定构建任务名称'),
     logDest: z.string().optional().describe('指定构建日志输出地址'),
@@ -117,7 +117,7 @@ export type SchemaPlatformType = z.infer<typeof SchemaPlatform>;
 export type TBuildResultData = z.infer<typeof SchemaBuildResult>;
 
 // Run API 相关 Schema
-export const SchemaRunDest = z.string().min(1).describe('构建输出目录路径');
+export const SchemaRunDest = z.string().min(1).describe('构建输出目录路径，支持 project:// 协议，构建成功后会自动打印对应的目录地址');
 export type TRunDest = z.infer<typeof SchemaRunDest>;
 
 export const SchemaRunResult = z.string().describe('运行 URL');
