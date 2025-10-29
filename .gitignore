@@ -32,4 +32,7 @@ coverage
 bin
 
 # test project
-tests/fixtures/projects/asset-operation/cocos.config.json
+e2e/.workspace/
+
+# auto generated files
+src/i18n/types/generated.d.ts
