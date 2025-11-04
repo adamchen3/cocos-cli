@@ -4,6 +4,7 @@ import { transformPluginScript } from './utils/script-compiler';
 import { MigrateStep, i18nTranslate, linkToAssetTarget, openCode } from '../utils';
 import { AssetHandlerBase } from '../../@types/protected';
 import { JavaScriptAssetUserData, PluginScriptUserData } from '../../@types/userDatas';
+import scripting from '../../../scripting';
 const migrateStep = new MigrateStep();
 
 export const JavascriptHandler: AssetHandlerBase = {
@@ -39,7 +40,14 @@ export const JavascriptHandler: AssetHandlerBase = {
                 if (userData.isPlugin) {
                     return await _importPluginScript(asset);
                 } else {
-                    return true;
+                    scripting.dispatchAssetChange(asset.action, asset);
+                    try {
+                        await scripting.compileScripts();
+                        return true;
+                    } catch (error) {
+                        console.error(error);
+                        return false;
+                    }
                 }
             } catch (error) {
                 console.error(
