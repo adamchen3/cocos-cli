@@ -60,7 +60,7 @@ const BuildConfigCoreFields = z.object({
 
     // 场景配置
     scenes: z.array(SchemaSceneRef).describe('构建场景列表，默认为全部场景'),
-    startScene: z.string().describe('打开游戏后进入的第一个场景，db url 格式'),
+    startScene: z.string().describe('打开游戏后进入的第一个场景，支持 db url 和 uuid 格式'),
 
     // 构建模式
     debug: z.boolean().describe('是否是调试模式'),
@@ -115,7 +115,7 @@ export const SchemaBuildRuntimeOptions = z.object({
     skipCheck: z.boolean().default(false).optional().describe('跳过构建参数的检查和自动补全流程，请在确认其他构建参数都是完整的情况才能设置为 true ，否则可能因为缺少配置导致构建失败'),
     taskId: z.string().optional().describe('指定构建任务 ID'),
     taskName: z.string().optional().describe('指定构建任务名称'),
-    logDest: z.string().optional().describe('指定构建日志输出地址'),
+    // logDest: z.string().optional().describe('指定构建日志输出地址'),
 });
 
 // ==================== 平台特定的完整构建选项 ====================
@@ -150,9 +150,9 @@ export const SchemaBuildOption = z.union([
 export type TBuildOption = z.infer<typeof SchemaBuildOption>;
 
 export const SchemaBuildResult = z.object({
-    code: z.number().int().describe('构建的退出码, 0 表示成功, 其他表示失败'),
-    dest: z.string().optional().describe('构建后的游戏生成文件夹'),
-    reason: z.string().optional().describe('构建失败的原因'),
+    code: z.number().int().describe('构建的退出码, 0 表示成功, 其他表示失败, 32 表示参数错误, 34 表示构建失败, 37 表示构建繁忙, 50 表示未知错误'),
+    dest: z.string().optional().describe('构建后的游戏生成文件夹，目前输出为 project 协议地址'),
+    reason: z.string().optional().describe('构建失败的错误信息'),
 }).nullable().describe('构建项目后的结果');
 
 export const SchemaPreviewSettingsResult = z.object({
