@@ -3,6 +3,7 @@ import NativePackTool, { CocosParams, InternalNativePlatform } from './base/defa
 
 const platformPackToolMap: Record<string, string> = {
     windows: './platforms/windows',
+    android: './platforms/android',
     mac: './platforms/mac',
     ios: './platforms/ios',
 };
